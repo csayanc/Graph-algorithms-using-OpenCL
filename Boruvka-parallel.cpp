@@ -547,7 +547,7 @@ int main()
             kernel_combine_components,
             kernel_set_max_edge_weight;
 
-            std::string kernel_filename="Boruvka-adopted-version-alternate.cl";
+            std::string kernel_filename="Boruvka-MST.cl";
             std::string funcname1="find_min_edge_weight";
             std::string funcname2="find_min_edge_index";
             std::string funcname3="combine_components";
