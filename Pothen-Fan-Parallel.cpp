@@ -642,7 +642,7 @@ int main()
                                     };
 
 
-        std::string kernel_filename="Hopcroft-Karp-true-parallel.cl";
+        std::string kernel_filename="Pothen-Fan-Parallel.cl";
             
 
         std::vector<std::string>funcname={"initialize_arrays",
