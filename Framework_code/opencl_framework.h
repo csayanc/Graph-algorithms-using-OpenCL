@@ -909,7 +909,7 @@ void Graph::find_MST(std::vector<int>&edge_v1,
                                     d_parent);
     }
 
-    
+    queue.enqueueReadBuffer(d_mst_edges,CL_TRUE,0,sizeof(int)*(edge_count+1),(void*)mst_edges.data());
 
     
 }
@@ -1043,16 +1043,7 @@ void Graph::select_mst_edges(cl::Buffer &d_min_edge_id,
                                (void*)mst_edges.data());
 
 
-        int mst_edge_count=0;
-             for(int i=1;i<=edge_count;i++)
-            {
-                if(mst_edges[i])
-                {
-                    mst_edge_count++;
-                }
-            }
-    
-     std::cout<<"mst edge count:"<<mst_edge_count<<"\n";
+       
 }
 
 void Graph::init_colors_and_propagate(cl::Buffer &d_min_edge_id,
