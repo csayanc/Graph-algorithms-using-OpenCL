@@ -16,14 +16,28 @@ class Graph
     cl::CommandQueue queue;
     cl::Program program;
     int vertex_count,edge_count;
+    
+    
+    void initialize_kernel(std::string &funcname,
+                               cl::Kernel &kernel );
+
+    bool is_bipartite(int x,
+                  
+                  std::vector<int>outdegree,
+                  std::vector<int>starting_index,
+                  std::vector<int>ending_vertex_of_edge,
+                  std::vector<int>&colors);
+    public :
     struct node
     {
     int v1,v2,weight,id;
     };
 
-    void initialize_kernel(std::string &funcname,
-                               cl::Kernel &kernel );
-    public :
+    struct node2
+    {
+        int v1,v2,edge_id;
+    };
+
      Graph();
 
     void set_vertex_and_edge_count(int vertex_count,int edge_count)
@@ -107,6 +121,49 @@ class Graph
     void init_colors_and_propagate(cl::Buffer &d_min_edge_id,
                      cl::Buffer &d_min_opp_vertex,
                      cl::Buffer &d_parent);
+
+    void max_bipartite_matching(std::vector<int>&matched_edges,
+                                 std::vector<struct node2>&edges,
+                                 std::vector<int>&outdegree,
+                                 std::vector<int>&starting_index,
+                                 std::vector<int>&ending_vertex_of_edge,
+                                 std::vector<int>&actual_edge_id,
+                                 std::vector<int>&colors
+                                 
+                                 );
+
+    void initialize_matching(std::vector<int>&multidegree_vertex_count,
+                             
+                             cl::Buffer &d_edges,
+                             cl::Buffer &d_outdegree,
+                             cl::Buffer &d_starting_index,
+                             cl::Buffer &d_ending_vertex_of_edge,
+                             
+                             cl::Buffer &d_matched_edges,
+                             cl::Buffer &d_parent_edge_id,
+                             cl::Buffer &d_lookahead,
+                             cl::Buffer &d_visited,
+                             cl::Buffer &d_matched,
+                             cl::Buffer &d_outdegree_copy,
+                             cl::Buffer &d_actual_edge_id);
+
+    void run_parallel_pothen_fan(cl::Buffer &d_edges,
+                                 cl::Buffer &d_outdegree,
+                                 cl::Buffer &d_starting_index,
+                                 cl::Buffer &d_ending_vertex_of_edge,
+                                 cl::Buffer &d_vertices_X,
+                                 cl::Buffer &d_matched_edges,
+                                 cl::Buffer &d_parent_edge_id,
+                                 cl::Buffer &d_lookahead,
+                                 cl::Buffer &d_visited,
+                                 cl::Buffer &d_matched,
+                                 cl::Buffer &d_outdegree_copy,
+                                 cl::Buffer &d_actual_edge_id,
+                                 int vertex_count_X
+                                 );
+
+
+    
     
     
     
@@ -1081,3 +1138,370 @@ void Graph::init_colors_and_propagate(cl::Buffer &d_min_edge_id,
 
 }
     
+void Graph::max_bipartite_matching(std::vector<int>&matched_edges,
+                                 std::vector<struct node2>&edges,
+                                 std::vector<int>&outdegree,
+                                 std::vector<int>&starting_index,
+                                 std::vector<int>&ending_vertex_of_edge,
+                                 std::vector<int>&actual_edge_id,
+                                 std::vector<int>&colors
+                                
+                                
+                                 )
+{
+    std::vector<int>vertices_X,vertices_Y,degree,
+     degree_one_vertex, multidegree_vertex ;
+     try{
+    if(is_bipartite(1,
+                   
+                    outdegree,
+                    starting_index,
+                    ending_vertex_of_edge,
+                    colors))
+    {
+         std::cout<<"bipartite check done\n";
+        for(int i=1;i<=vertex_count;i++)
+        {
+            if(colors[i]==1)
+            {
+                vertices_X.push_back(i);
+                if(outdegree[i]==1)
+                {
+                    degree_one_vertex.push_back(i);
+                    
+                }
+                else if(outdegree[i]>1)
+                {
+                    multidegree_vertex.push_back(i);
+                }
+            }
+           
+        }
+        cl::Buffer d_edges,
+                   d_outdegree,
+                   d_starting_index,
+                   d_ending_vertex_of_edge,
+                   d_vertices_X,
+                   d_matched_edges,
+                   d_parent_edge_id,
+                   d_lookahead,
+                   d_matched,
+                   d_visited,
+                   d_degree_one_vertex,
+                   d_outdegree_copy,
+                   d_actual_edge_id;
+
+        
+        d_edges = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(struct node)*(edges.size()));
+        
+        d_outdegree = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(int)*(outdegree.size()));
+
+        d_starting_index = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(int)*(starting_index.size()));
+
+        d_ending_vertex_of_edge = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(int)*(ending_vertex_of_edge.size()));
+
+        d_actual_edge_id = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(int)*(ending_vertex_of_edge.size()));
+
+
+        d_vertices_X = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(int)*(vertices_X.size()));
+        
+        d_matched_edges = cl::Buffer(context,CL_MEM_READ_WRITE,
+                             sizeof(int)*(matched_edges.size()));
+
+        d_parent_edge_id = cl::Buffer(context,CL_MEM_READ_WRITE,
+                             sizeof(int)*(vertex_count+1));
+
+        d_lookahead = cl::Buffer(context,CL_MEM_READ_WRITE,
+                                sizeof(int)*(vertex_count+1));
+
+        d_visited = cl::Buffer(context,CL_MEM_READ_WRITE,
+                                sizeof(int)*(vertex_count+1));
+
+        d_matched = cl::Buffer(context,CL_MEM_READ_WRITE,
+                                sizeof(int)*(vertex_count+1));
+
+        
+
+        d_outdegree_copy = cl::Buffer(context,CL_MEM_READ_WRITE,
+                            sizeof(int)*(outdegree.size()));
+
+        
+        queue.enqueueWriteBuffer(d_edges,CL_TRUE,0,sizeof(struct node2)*(edges.size()),
+                                   (void*)edges.data());
+
+         queue.enqueueWriteBuffer(d_outdegree,CL_TRUE,0,sizeof(int)*(outdegree.size()),
+                                   (void*)outdegree.data());
+
+        
+         queue.enqueueWriteBuffer(d_outdegree_copy,CL_TRUE,0,sizeof(int)*(outdegree.size()),
+                                   (void*)outdegree.data());
+
+        queue.enqueueWriteBuffer(d_starting_index,CL_TRUE,0,sizeof(int)*(starting_index.size()),
+                                     (void*)starting_index.data());
+        
+        queue.enqueueWriteBuffer(d_ending_vertex_of_edge,CL_TRUE,0, sizeof(int)*(ending_vertex_of_edge.size()),
+                                    (void*)ending_vertex_of_edge.data());
+
+        queue.enqueueWriteBuffer(d_actual_edge_id,CL_TRUE,0, sizeof(int)*(actual_edge_id.size()),
+                                    (void*)actual_edge_id.data());
+        queue.enqueueWriteBuffer(d_vertices_X,CL_TRUE,0, sizeof(int)*(vertices_X.size()),
+                                    (void*)vertices_X.data());
+        
+        queue.enqueueFillBuffer(d_matched_edges,0,0,sizeof(int)*(matched_edges.size()));
+
+        queue.enqueueFillBuffer(d_parent_edge_id,-1,0,sizeof(int)*(vertex_count+1));
+
+       // std::vector<int>parent_edge_id(vertex_count+1,0);
+
+        
+
+        queue.enqueueFillBuffer(d_lookahead,-1,0, sizeof(int)*(vertex_count+1));
+
+        queue.enqueueFillBuffer(d_visited,0,0,sizeof(int)*(vertex_count+1));
+
+        queue.enqueueFillBuffer(d_matched,-1,0,sizeof(int)*(vertex_count+1));
+                                    
+        initialize_matching(multidegree_vertex,
+                            d_edges,
+                            d_outdegree,
+                            d_starting_index,
+                            d_ending_vertex_of_edge,
+                            d_matched_edges,
+                            d_parent_edge_id,
+                            d_lookahead,
+                            d_visited,
+                            d_matched,
+                            d_outdegree_copy,
+                            d_actual_edge_id
+                            );
+
+        queue.enqueueReadBuffer(d_matched_edges,CL_TRUE,0,sizeof(int)*(matched_edges.size()),
+                                    (void*)matched_edges.data());
+
+        int matched_count=0;
+
+        std::set<int>s;
+
+        for(int i=1;i<=edge_count;i++)
+        {
+            if(matched_edges[i])
+            {
+                matched_count++;
+                s.insert(edges[i].v1);
+                s.insert(edges[i].v2);
+                if(edges[i].v1 >vertex_count || edges[i].v2 > vertex_count)
+                std::cout<<"Culprit is here";
+            }
+        }
+
+        std::cout<<"matched vertices:"<<s.size()<<"\n";
+
+        std::cout<<"after initialize matching,matching count:"<<matched_count<<"\n";
+
+        run_parallel_pothen_fan(d_edges,
+                                 d_outdegree,
+                                 d_starting_index,
+                                 d_ending_vertex_of_edge,
+                                 d_vertices_X,
+                                 d_matched_edges,
+                                 d_parent_edge_id,
+                                 d_lookahead,
+                                 d_visited,
+                                 d_matched,
+                                 d_outdegree_copy,
+                                 d_actual_edge_id,
+                                 vertices_X.size());
+        
+
+        queue.enqueueReadBuffer(d_matched_edges,CL_TRUE,0,sizeof(int)*(matched_edges.size()),
+                                    (void*)matched_edges.data());
+    }else{
+        printf("Please provide a bipartite graph");
+    }
+     }catch(cl::Error error)
+        {
+            std::cout << error.what() << "(" << error.err() << ")" << std::endl;
+            exit(0);
+        }
+}
+
+bool Graph::is_bipartite(int x,
+                  
+                  std::vector<int>outdegree,
+                  std::vector<int>starting_index,
+                  std::vector<int>ending_vertex_of_edge,
+                  std::vector<int>&colors)
+{
+    
+    for(int i=1;i<=vertex_count;i++)
+    {
+        int current_end_index=starting_index[i]+outdegree[i]-1;
+        for(int j=starting_index[i];j<=current_end_index;j++)
+        {
+            int edge_end_vertex=ending_vertex_of_edge[j];
+            if(colors[i]==colors[edge_end_vertex])
+            {
+                //std::cout<<i<<" "<<edge_end_vertex<<"\n";
+                return false;
+            }
+        }
+
+
+    }
+    return true;
+    
+}
+
+ void Graph::initialize_matching(std::vector<int>&multidegree_vertex,
+                                
+                             cl::Buffer &d_edges,
+                             cl::Buffer &d_outdegree,
+                             cl::Buffer &d_starting_index,
+                             cl::Buffer &d_ending_vertex_of_edge,
+                             
+                             cl::Buffer &d_matched_edges,
+                             cl::Buffer &d_parent_edge_id,
+                             cl::Buffer &d_lookahead,
+                             cl::Buffer &d_visited,
+                             cl::Buffer &d_matched,
+                             cl::Buffer &d_outdegree_copy,
+                             cl::Buffer &d_actual_edge_id)
+{
+    cl::Kernel kernel_initialize_arrays,kernel_match_and_update;
+    
+    std::vector<std::string>funcname={"initialize_arrays",
+                                        "match_and_update"};
+
+    initialize_kernel(funcname[0],kernel_initialize_arrays);
+    initialize_kernel(funcname[1],kernel_match_and_update);
+
+    kernel_initialize_arrays.setArg(0,d_visited);
+    kernel_initialize_arrays.setArg(1,d_lookahead);
+    kernel_initialize_arrays.setArg(2,d_parent_edge_id);
+    kernel_initialize_arrays.setArg(3,d_starting_index);
+
+    cl::NDRange global(vertex_count+1);
+    cl::NDRange local(1);
+
+    queue.enqueueNDRangeKernel
+    (kernel_initialize_arrays,cl::NullRange,global,local);
+
+    kernel_match_and_update.setArg(1,d_actual_edge_id);
+    kernel_match_and_update.setArg(2,d_outdegree);
+    kernel_match_and_update.setArg(3,d_starting_index);
+    kernel_match_and_update.setArg(4,d_ending_vertex_of_edge);
+    kernel_match_and_update.setArg(5,d_matched_edges);
+    kernel_match_and_update.setArg(6,d_lookahead);
+    kernel_match_and_update.setArg(7,d_visited);
+    kernel_match_and_update.setArg(8,d_parent_edge_id);
+    kernel_match_and_update.setArg(9,d_outdegree_copy);
+    kernel_match_and_update.setArg(10,d_matched);
+
+    if(multidegree_vertex.size()>0)
+    {
+        cl::Buffer d_Q=cl::Buffer(context,CL_MEM_READ_WRITE,
+                                    sizeof(int)*(multidegree_vertex.size()));
+
+        queue.enqueueWriteBuffer(d_Q,
+        CL_TRUE,0,sizeof(int)*(multidegree_vertex.size()),
+        (void*)multidegree_vertex.data());
+
+        std::cout<<"multidegree vertices\n";
+
+       kernel_match_and_update.setArg(0,d_Q);
+
+        global=cl::NDRange(multidegree_vertex.size());
+
+        local=cl::NDRange(1);
+
+        queue.enqueueNDRangeKernel
+        (kernel_match_and_update,cl::NullRange,global,local);
+    }
+
+
+
+
+
+
+}
+
+void Graph::run_parallel_pothen_fan(cl::Buffer &d_edges,
+                                 cl::Buffer &d_outdegree,
+                                 cl::Buffer &d_starting_index,
+                                 cl::Buffer &d_ending_vertex_of_edge,
+                                 cl::Buffer &d_vertices_X,
+                                 cl::Buffer &d_matched_edges,
+                                 cl::Buffer &d_parent_edge_id,
+                                 cl::Buffer &d_lookahead,
+                                 cl::Buffer &d_visited,
+                                 cl::Buffer &d_matched,
+                                 cl::Buffer &d_outdegree_copy,
+                                 cl::Buffer &d_actual_edge_id,
+                                 int vertex_count_X
+                                 )
+{
+    cl::Kernel kernel_initialize_arrays, kernel_find_augmenting_paths;
+
+    std::vector<std::string>funcnames={"initialize_arrays",
+                                       "find_augmenting_paths"};
+
+    initialize_kernel(funcnames[0],kernel_initialize_arrays);
+    initialize_kernel(funcnames[1],kernel_find_augmenting_paths);
+
+    int path_found=0;
+
+    cl::Buffer d_path_found=cl::Buffer(context,CL_MEM_READ_WRITE,
+                                sizeof(int));
+    do
+    {
+        path_found=0;
+        queue.enqueueFillBuffer(d_path_found,0,0,sizeof(int));
+
+        
+        kernel_initialize_arrays.setArg(0, d_visited);   // __global int *visited,
+        
+        
+        kernel_initialize_arrays.setArg(1, d_lookahead);//                         __global int *lookahead,
+        kernel_initialize_arrays.setArg(2, d_parent_edge_id);         //                         __global int *parent_edge_id,
+        kernel_initialize_arrays.setArg(3, d_starting_index); //                         __global int *starting_index
+
+        cl::NDRange global(vertex_count+1);
+        cl::NDRange local(1);
+
+        queue.enqueueNDRangeKernel
+        (kernel_initialize_arrays,cl::NullRange,global,local);
+
+        kernel_find_augmenting_paths.setArg(0, d_edges);       // __global struct node* edges,
+        kernel_find_augmenting_paths.setArg(1, d_outdegree);       // __global int* outdegree,
+        kernel_find_augmenting_paths.setArg(2, d_starting_index);       // __global int* starting_index,
+        kernel_find_augmenting_paths.setArg(3, d_ending_vertex_of_edge);      // __global int* ending_vertex_of_edge,
+        kernel_find_augmenting_paths.setArg(4, d_vertices_X);      // __global int* vertices_X,
+        kernel_find_augmenting_paths.setArg(5, d_matched_edges);      // __global int* matched_edges,
+        kernel_find_augmenting_paths.setArg(6, d_parent_edge_id);      // __global int* parent_edge_id,
+        kernel_find_augmenting_paths.setArg(7, d_lookahead);      // __global int* lookahead,
+        kernel_find_augmenting_paths.setArg(8, d_visited);      // __global int* visited,
+
+
+        kernel_find_augmenting_paths.setArg(9, d_path_found);                        // __global int* path_found,
+        kernel_find_augmenting_paths.setArg(10, d_matched);                        // __global int* matched
+
+        kernel_find_augmenting_paths.setArg(11, d_actual_edge_id);
+        global=cl::NDRange(vertex_count_X);
+        local=cl::NDRange(1);
+
+        queue.enqueueNDRangeKernel
+        (kernel_find_augmenting_paths,cl::NullRange,global,local);
+
+        queue.enqueueReadBuffer(d_path_found,
+        CL_TRUE,0,sizeof(int),
+        (void*)&path_found);
+        
+
+    } while (path_found!=0);
+}
